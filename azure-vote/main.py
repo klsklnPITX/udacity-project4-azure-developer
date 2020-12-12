@@ -7,25 +7,49 @@ import sys
 import logging
 from datetime import datetime
 
+
 # App Insights
 # TODO: Import required libraries for App Insights
-
-# Logging
-logger = # TODO: Setup logger
-
-# Metrics
-exporter = # TODO: Setup exporter
-
-# Tracing
-tracer = # TODO: Setup tracer
+from opencensus.ext.azure.log_exporter import AzureLogHandler
+from opencensus.ext.azure import metrics_exporter
+from opencensus.stats import aggregation as aggregation_module
+from opencensus.stats import measure as measure_module
+from opencensus.stats import stats as stats_module
+from opencensus.stats import view as view_module
+from opencensus.tags import tag_map as tag_map_module
+from opencensus.ext.azure.trace_exporter import AzureExporter
+from opencensus.trace.samplers import ProbabilitySampler
+from opencensus.trace.tracer import Tracer
+from opencensus.ext.flask.flask_middleware import FlaskMiddleware
 
 app = Flask(__name__)
-
-# Requests
-middleware = # TODO: Setup flask middleware
-
 # Load configurations from environment or config file
 app.config.from_pyfile('config_file.cfg')
+conn_string = app.config["CONN_STRING_INSTRUMENTATION_KEY"]
+
+# Logging
+logger = logging.getLogger(__name__)
+logger.addHandler(AzureLogHandler(connection_string=conn_string))
+
+# Metrics
+exporter = metrics_exporter.new_metrics_exporter(
+    enable_standard_metrics=True,
+    connection_string=conn_string)
+
+# Tracing
+tracer = Tracer(
+    exporter=AzureExporter(
+        connection_string=conn_string),
+    sampler=ProbabilitySampler(1.0),
+)
+
+# Requests
+middleware = FlaskMiddleware(
+    app,
+    exporter=AzureExporter(connection_string=conn_string),
+    sampler=ProbabilitySampler(rate=1.0),
+)
+
 
 if ("VOTE1VALUE" in os.environ and os.environ['VOTE1VALUE']):
     button1 = os.environ['VOTE1VALUE']
@@ -50,8 +74,11 @@ if app.config['SHOWHOST'] == "true":
     title = socket.gethostname()
 
 # Init Redis
-if not r.get(button1): r.set(button1,0)
-if not r.get(button2): r.set(button2,0)
+if not r.get(button1):
+    r.set(button1, 0)
+if not r.get(button2):
+    r.set(button2, 0)
+
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -61,8 +88,10 @@ def index():
         # Get current values
         vote1 = r.get(button1).decode('utf-8')
         # TODO: use tracer object to trace cat vote
+        tracer.span(name="Cat")
         vote2 = r.get(button2).decode('utf-8')
         # TODO: use tracer object to trace dog vote
+        tracer.span(name="Dog")
 
         # Return index with values
         return render_template("index.html", value1=int(vote1), value2=int(vote2), button1=button1, button2=button2, title=title)
@@ -72,15 +101,17 @@ def index():
         if request.form['vote'] == 'reset':
 
             # Empty table and return results
-            r.set(button1,0)
-            r.set(button2,0)
+            r.set(button1, 0)
+            r.set(button2, 0)
             vote1 = r.get(button1).decode('utf-8')
             properties = {'custom_dimensions': {'Cats Vote': vote1}}
             # TODO: use logger object to log cat vote
+            logger.info(properties)
 
             vote2 = r.get(button2).decode('utf-8')
             properties = {'custom_dimensions': {'Dogs Vote': vote2}}
             # TODO: use logger object to log dog vote
+            logger.info(properties)
 
             return render_template("index.html", value1=int(vote1), value2=int(vote2), button1=button1, button2=button2, title=title)
 
@@ -88,7 +119,7 @@ def index():
 
             # Insert vote result into DB
             vote = request.form['vote']
-            r.incr(vote,1)
+            r.incr(vote, 1)
 
             # Get current values
             vote1 = r.get(button1).decode('utf-8')
@@ -97,8 +128,9 @@ def index():
             # Return results
             return render_template("index.html", value1=int(vote1), value2=int(vote2), button1=button1, button2=button2, title=title)
 
+
 if __name__ == "__main__":
     # comment line below when deploying to VMSS
-    #app.run() # local
+    # app.run() # local
     # uncomment the line below before deployment to VMSS
-    app.run(host='0.0.0.0', threaded=True, debug=True) # remote
+    app.run(host='0.0.0.0', threaded=True, debug=True)  # remote
