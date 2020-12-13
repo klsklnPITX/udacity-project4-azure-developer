@@ -18,6 +18,7 @@ from opencensus.stats import stats as stats_module
 from opencensus.stats import view as view_module
 from opencensus.tags import tag_map as tag_map_module
 from opencensus.ext.azure.trace_exporter import AzureExporter
+from opencensus.ext.azure.log_exporter import AzureEventHandler
 from opencensus.trace.samplers import ProbabilitySampler
 from opencensus.trace.samplers import AlwaysOnSampler
 from opencensus.trace.tracer import Tracer
@@ -31,6 +32,7 @@ conn_string = app.config["CONN_STRING_INSTRUMENTATION_KEY"]
 # Logging
 logger = logging.getLogger(__name__)
 logger.addHandler(AzureLogHandler(connection_string=conn_string))
+logger.addHandler(AzureEventHandler(connection_string=conn_string))
 logger.setLevel(logging.INFO)
 
 # Metrics
